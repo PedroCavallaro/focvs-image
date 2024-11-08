@@ -11,7 +11,7 @@ import { CanvasModule } from './canvas/canvas.module'
     ConfigModule.forRoot({
       isGlobal: true
     }),
-    CanvasModule,
+    CanvasModule
   ],
   controllers: [AppController],
   providers: [AppService]

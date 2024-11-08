@@ -8,8 +8,9 @@ declare global {
       SECRET_KEY: string
       MINIO_HOST: string
       MINIO_PORT: number
-      APP_PORT: number
-      BUCKET_NAME: string
+      PORT: number
+      GIFS_BUCKET: string
+      WORKOUT_COVERS_BUCKET: string
     }
   }
 }

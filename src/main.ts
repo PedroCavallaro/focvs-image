@@ -1,12 +1,19 @@
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import { Logger } from '@nestjs/common'
+import { MicroserviceOptions, Transport } from '@nestjs/microservices'
 
 async function bootstrap() {
+  const eventBaseApp = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
+    transport: Transport.TCP,
+    options: {
+      port: 8889
+    }
+  })
   const app = await NestFactory.create(AppModule)
 
-  await app
-    .listen(process.env.APP_PORT ?? 8888)
-    .then(() => Logger.log(`App runing on ${process.env.APP_PORT}`))
+  app.listen(process.env.PORT ?? 8888).then(() => Logger.log(`App runing on ${process.env.PORT}`))
+
+  eventBaseApp.listen()
 }
 bootstrap()

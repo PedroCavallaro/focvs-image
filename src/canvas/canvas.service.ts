@@ -1,52 +1,95 @@
-import { Injectable } from "@nestjs/common";
-import * as sharp from "sharp"
+import * as sharp from 'sharp'
+import * as fs from 'node:fs/promises'
+import { Injectable } from '@nestjs/common'
+import { join } from 'node:path'
+import { CanvasHelper } from './helpers/canvas.helper'
+import { StorageService } from 'src/storage/storage.service'
+import { CreateWorkoutCanvasDto } from 'src/dto/create-workout-canvas.dto'
 
 @Injectable()
 export class CanvasService {
+  constructor(private readonly storage: StorageService) {}
 
-    async generateWorkoutCover() {
-        try {
-            
-            const imagesPaths = ["../images/1.jpg", "../images/2.jpg", "../images/3.jpg"]
-            
-            const [image1, image2, image3] = await Promise.all(
-                imagesPaths.map(path => sharp(path))
-            );
-            
-            const { width: width1, height: height1 } = await image1.metadata();
-            const { width: width2, height: height2 } = await image2.metadata();
-            const { width: width3, height: height3 } = await image3.metadata();
-        
-            const outputWidth = Math.max(width1, width2, width3);
-        
-            const outputHeight = height1 + height2 + height3;
-        
-            const resizedImages = await Promise.all([
-              image1.resize(outputWidth).toBuffer(),
-              image2.resize(outputWidth).toBuffer(),
-              image3.resize(outputWidth).toBuffer(),
-            ]);
-        
-            
-            await sharp({
-              create: {
-                width: outputWidth,
-                height: outputHeight,
-                channels: 3,
-                background: { r: 255, g: 255, b: 255 }, 
-              }
-            })
-              .composite([
-                { input: resizedImages[0], top: 0, left: 0 },
-                { input: resizedImages[1], top: height1, left: 0 },
-                { input: resizedImages[2], top: height1 + height2, left: 0 },
-              ])
-              .toFile("../images");
-        } catch (error) {
-            console.log(error);
+  private readonly helper = new CanvasHelper()
+
+  async generateWorkoutCover({ muscles, workoutId }: CreateWorkoutCanvasDto) {
+    try {
+      const key = `${workoutId}.png`
+      const picturesAmount = Math.min(muscles.length, 4)
+
+      this.helper.getMeasures(picturesAmount)
+
+      const { imagesToResize, outputHeight, outputWidth } = await this.getMuscleImages(
+        picturesAmount,
+        muscles
+      )
+      console.log(imagesToResize)
+
+      const resizedImages = await Promise.all(imagesToResize)
+
+      const composite = this.helper.getComposite(resizedImages)
+
+      const outputImagePath = join(__dirname, '..', '..', `temp/${key}`)
+
+      await sharp({
+        create: {
+          width: outputWidth,
+          height: outputHeight,
+          channels: 3,
+          background: { r: 255, g: 255, b: 255 }
         }
-        
-          
+      })
+        .composite(composite)
+        .toFile(join(__dirname, '..', '..', `temp/${key}`))
+
+      await this.storage.save({
+        key,
+        image: outputImagePath,
+        bucket: process.env.WORKOUT_COVERS_BUCKET
+      })
+
+      fs.rm(join(__dirname, '..', '..', outputImagePath))
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
+  async getMuscleImages(picturesAmount: number, muscles: string[]) {
+    const imagesPaths = []
+
+    for (let i = 0; i < picturesAmount; i++) {
+      imagesPaths.push(join(__dirname, '..', '..', `images/${muscles[i]}.png`))
     }
 
+    const images = await Promise.all(imagesPaths.map((path) => sharp(path)))
+
+    const outputWidth = this.helper.sizes.width * 2
+    const outputHeight = this.helper.sizes.height * 2
+
+    const imagesToResize = []
+
+    const sizes = this.helper.getImagesSizeByMuscleAmount()
+
+    for (let i = 0; i < images.length; i++) {
+      if (i === 2) {
+        imagesToResize.push(
+          images[i].resize(this.helper.sizes.width * 2, this.helper.sizes.height).toBuffer()
+        )
+
+        continue
+      }
+
+      const image = images[i]
+        .resize(sizes[picturesAmount].width, sizes[picturesAmount].height)
+        .toBuffer()
+
+      imagesToResize.push(image)
+    }
+
+    return {
+      outputWidth,
+      outputHeight,
+      imagesToResize
+    }
+  }
 }
